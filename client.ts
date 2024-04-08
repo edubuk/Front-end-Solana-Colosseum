@@ -81,7 +81,7 @@ function sendCertificateRecord(signer, programId, connection) {
 
 async function main() {
   const provider = new Provider(
-    clusterApiUrl("devnet"), // Or use 'testnet' or 'mainnet-beta' based on your network
+    clusterApiUrl("devnet"), // Or use 'testnet' or 'mainnet-beta' basis your network
     {
       wallet: initializeSignerKeypair(),
     }
