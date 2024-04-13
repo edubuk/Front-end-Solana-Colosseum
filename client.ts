@@ -1,5 +1,5 @@
 const { Provider, clusterApiUrl, web3 } = require('@project-serum/anchor');
-const { BorshSchema } = require('@project-serum/borsh');
+const { Borsh } = require('@project-serum/borsh');
 const fs = require("fs");
 const dotenv = require("dotenv");
 dotenv.config();
@@ -14,7 +14,7 @@ class CertificateRecord {
   }
 }
 
-const CertificateRecordSchema = new BorshSchema([
+const CertificateRecordSchema = new Borsh.Schema([
   ["certificate_issued_to", "string"],
   ["certificate_issued_by", "string"],
   ["certificate_type", "string"],
@@ -26,28 +26,27 @@ function initializeSignerKeypair() {
   if (!process.env.PRIVATE_KEY) {
     console.log("Creating .env file");
     const signer = web3.Keypair.generate();
-    fs.writeFileSync(".env", "PRIVATE_KEY=[" + signer.secretKey.toString() + "]");
+    fs.writeFileSync(".env", "PRIVATE_KEY=" + signer.secretKey.toString());
     return signer;
   }
 
-  const secret = JSON.parse(process.env.PRIVATE_KEY || "");
-  const secretKey = Uint8Array.from(secret);
+  const secret = JSON.parse(process.env.PRIVATE_KEY);
+  const secretKey = Uint8Array.from(secret.data);
   const keypairFromSecretKey = web3.Keypair.fromSecretKey(secretKey);
   return keypairFromSecretKey;
 }
 
-function airdropSolIfNeeded(signer, connection) {
-  return connection.getBalance(signer.publicKey).then((balance) => {
-    console.log("Current balance is", balance / web3.LAMPORTS_PER_SOL);
-    if (balance < web3.LAMPORTS_PER_SOL) {
-      console.log("Airdropping 1 SOL...");
-      return connection.requestAirdrop(signer.publicKey, web3.LAMPORTS_PER_SOL);
-    }
-    return Promise.resolve();
-  });
+async function airdropSolIfNeeded(signer, connection) {
+  const balance = await connection.getBalance(signer.publicKey);
+  console.log("Current balance is", balance / web3.LAMPORTS_PER_SOL);
+  if (balance < web3.LAMPORTS_PER_SOL) {
+    console.log("Airdropping 1 SOL...");
+    await connection.requestAirdrop(signer.publicKey, web3.LAMPORTS_PER_SOL);
+    console.log("Airdrop successful");
+  }
 }
 
-function sendCertificateRecord(signer, programId, connection) {
+async function sendCertificateRecord(signer, programId, connection) {
   const certificateRecord = new CertificateRecord({
     certificate_issued_to: "Recipient Name",
     certificate_issued_by: "Issuer Name",
@@ -56,7 +55,7 @@ function sendCertificateRecord(signer, programId, connection) {
     timestamp: Date.now(),
   });
 
-  const instructionData = Buffer.from(CertificateRecordSchema.serialize(certificateRecord));
+  const instructionData = Borsh.serialize(CertificateRecordSchema, certificateRecord);
 
   const transaction = new web3.Transaction().add(
     web3.SystemProgram.createAccount({
@@ -76,7 +75,8 @@ function sendCertificateRecord(signer, programId, connection) {
     })
   );
 
-  return web3.sendAndConfirmTransaction(connection, transaction, [signer]);
+  const signature = await web3.sendAndConfirmTransaction(connection, transaction, [signer]);
+  console.log("Transaction successful with signature:", signature);
 }
 
 async function main() {
@@ -84,6 +84,7 @@ async function main() {
     clusterApiUrl("devnet"), // Or use 'testnet' or 'mainnet-beta' basis your network
     {
       wallet: initializeSignerKeypair(),
+      // Remove this line if you don't want to use a provider wallet
     }
   );
 
@@ -92,9 +93,9 @@ async function main() {
 
   await airdropSolIfNeeded(wallet, connection);
 
-  const programId = new web3.PublicKey(
-    "BSx5tNZfF8yA3UkXDPPgKHBcxJ4izQtaQCJukoLwVckt"
-  );
+  const programId = new web3.PublicKey("Your_Program_ID");
+  // Replace 'Your_Program_ID' with the actual program ID of your deployed smart contract
+
   await sendCertificateRecord(wallet, programId, connection);
 }
 
